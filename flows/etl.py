@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 load_dotenv()
 DB_PARAMS = {
     "host": "localhost",
-    "port": "5432",
+    "port": "5433",
     "user": os.environ.get("PGDATABASE_USER"),
     "password": os.environ.get("PGDATABASE_PASSWORD"),
     "db": os.environ.get("PGDATABASE_DB"),

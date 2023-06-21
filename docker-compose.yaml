@@ -1,18 +1,93 @@
+version: '3.7'
+
+networks:
+  default:
+    name: prefect-network
+
+volumes:
+  prefect:
+    name: prefect
+  db:
+    name: db
+
 services:
+  ### Target database
   pgdatabase:
     image: postgres:13
+    restart: always
     environment:
-      - POSTGRES_USER=${PGDATABASE_USER}
-      - POSTGRES_PASSWORD=${PGDATABASE_PASSWORD}
-      - POSTGRES_DB=${PGDATABASE_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - "./data:/var/lib/postgresql/data:rw"
     ports:
-      - "5432:5432"
+    - published: 5433
+      target: 5433
+  
+  # PGAdmin
   pgadmin:
     image: dpage/pgadmin4
+    restart: always
     environment:
       - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
     ports:
-      - "8080:80"
+    - published: 8080
+      target: 80
+    depends_on:
+    - pgdatabase
+  
+  ### Prefect Database
+  database:
+    image: postgres:13
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=prefect
+    expose:
+      - 5432
+    volumes: 
+      - db:/var/lib/postgresql/data
+  
+  ### Prefect Server API and UI
+  server:
+    image: prefecthq/prefect:2.10.13-python3.11
+    restart: always
+    volumes:
+      - prefect:/root/.prefect
+    entrypoint: ["/opt/prefect/entrypoint.sh", "prefect", "server", "start"]
+    environment:
+      # If you want to access Prefect Server from anywhere other than the Docker host machine, you will need to change
+      # PREFECT_UI_URL to match the external hostname/IP used to load the  UI in your web browser.
+      - PREFECT_UI_URL=http://127.0.0.0:4200/api
+      - PREFECT_API_URL=http://127.0.0.1:4200/api
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres@database:5432/prefect
+    ports:
+      - 4200:4200
+    depends_on:
+      - database
+
+  ## Prefect Agent
+  agent:
+    image: prefecthq/prefect:2.10.13-python3.11
+    restart: always
+    entrypoint: ["prefect", "agent", "start", "-q", "prefect-agent"]
+    environment:
+      - PREFECT_API_URL=http://server:4200/api
+#       Use PREFECT_API_KEY if connecting the agent to Prefect Cloud
+#     - PREFECT_API_KEY=YOUR_API_KEY
+
+  ### Prefect CLI
+  cli:
+    image: prefecthq/prefect:2.10.13-python3.11
+    entrypoint: ["/bin/bash", "-c", "make run && /bin/bash"]
+    working_dir: "/root/etl"
+    tty: true
+    stdin_open: true
+    volumes:
+      - ".:/root/etl"
+    environment:
+      - PREFECT_API_URL=http://server:4200/api
