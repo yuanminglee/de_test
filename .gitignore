@@ -43,3 +43,6 @@ dask-worker-space/
 
 # Data
 data/
+
+# Deployments
+deployments/
